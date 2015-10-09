@@ -108,7 +108,7 @@ void free_linked_list(struct node* head) {
         struct node *tmp = head;
         head = head->next;
         free(tmp->value);
-        free(tmp);
+        //free(tmp);
     }
 }
 
@@ -136,28 +136,20 @@ struct node *list_insert(char *path, struct node *head){
 	return new_node;
 }
 
-/* 
- * wordbank-related functions. please don't change the
- * function prototypes for these three functions.
- * load_words takes the name of the file that should be
- * opened and words read from, and a pointer to an int
- * that should be indirectly modified to store the number
- * of words loaded from the file.  The function should 
- * return the linked list of words.
- */
 struct node *load_paths(const char *filename, int *num_paths) {
 	  FILE *config = fopen(filename, "r");
-	  int size = 128; //arbitrary? what should size be?
+	  int size = 132;
 	  char *this_line = malloc(size*sizeof(char));
 	  fgets(this_line, size, config);
+          printf("Path from file: %s\n", this_line);
 	  *num_paths = 0;
-	  struct node *head = malloc(sizeof(struct node));
-	  head = NULL;
-    do{
-		    head = list_insert(this_line, head);
+	  //struct node *head = malloc(sizeof(struct node));
+	  struct node *head = NULL;
+          do{
+		head = list_insert(this_line, head);
 	    	*num_paths = *num_paths + 1; //dereference to indirectly modify
-    }while (fgets(this_line, size, config) != NULL);
-    free(this_line);
+          }while (fgets(this_line, size, config) != NULL);
+          free(this_line);
 	  return head;
 }
 
@@ -169,13 +161,10 @@ bool check_paths(struct node* paths, char** token) {
     bool match = false;
     int rv = stat(this_cmd, &statresult);
     if (rv<0){
-      // stat failed, must try again with paths
-      printf("Stat failed. File %s doesn't exist\n", this_cmd);
-      char* new_path = malloc(sizeof(char)*32);
+      // stat failed on its own, must try with paths
+      char* new_path = malloc(sizeof(char)*128);
       while(!match && paths!=NULL) {
-        //struct node* t_path = paths;
-        new_path = paths->value;
-        strcat(new_path, "/");
+        strcpy(new_path,paths->value);
         strcat(new_path,this_cmd);
         struct stat statresult;
         rv = stat(new_path, &statresult);
@@ -250,7 +239,7 @@ bool execute_line(char **tokens, bool *mode, struct node *paths){
                     pid = wait(&childrv);
                 }
             }else{
-            printf("Invalid command was: %s\n", this_cmd[0]);
+                printf("Invalid command was: %s\n", this_cmd[0]);
             }
         } 
     }
@@ -271,9 +260,10 @@ void list_print(const struct node *list) {
 }
 
 int main(int argc, char **argv) {
-    char *filename = "/home/csvm/cosc301/cosc301-proj02/shell-config";
+    char *filename = argv[1];
     int num_paths = 0;
-    struct node* paths = load_paths("/home/csvm/cosc301/cosc301-proj02/shell-config", &num_paths); 
+    struct node* paths = NULL;
+    paths = load_paths(filename, &num_paths);
     bool current_mode = true; //use true = sequential, false = parallel
     bool is_running = true;
     int buff_size = 1024;
