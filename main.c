@@ -24,6 +24,9 @@ Additional Stage 1 features (commenting, corner cases, etc.)
 
 Sam worked mostly on these things:
 
+setting up path variability
+
+
 But you rarely see us apart so it's pretty damn collaborative (two Cat Emojis)
 */
 
@@ -175,7 +178,83 @@ bool execute_line(char **tokens, bool *mode){
     return is_running;
 }
 
+struct node {
+// basic struct for linked list, used to implement paths
+    char* value;
+    struct node *next;
+};
+
+
+
+
+void create_paths(struct node** head) {
+// given a head to a linked list, this function returns the head of a linked list with the possible paths as nodes
+    int num_paths =7;
+    char* paths[7] = {"/bin","/usr/bin","/usr/sbin","/sbin","/usr/local/bin",".","/usr/games"};
+    
+    for (int i = 0; i <num_paths; i++) {
+        struct node* new_node = (struct node *)malloc(sizeof(struct node));
+        new_node->value = strdup(paths[i]);
+        new_node->next = *head;
+        *head = new_node;
+    }
+}
+
+void check_paths(struct node* paths, char*** commands, int num_commands) {
+// this function takes a linked list of possible paths, a list of commands, and the size of the list and updates the command list so that all commands are valid
+  for (int i = 0; i < num_commands;i++) {
+    struct stat statresult;
+    int rv = stat(*commands[i], &statresult);
+    if (rv<0){
+      // stat failed, must try again with paths
+      printf("Stat failed. File %s doesn't exist\n", *commands[i]);
+      struct node t_path = *paths;
+      bool no_match = true;
+      int attempts = 0;
+      while(no_match && attempts < 7) {
+        char* new_path = strcat(t_path.value, *commands[i]);
+        struct stat statresult;
+        rv = stat(new_path, &statresult);
+        if (rv<0) { // still not a match
+          printf("Stat failed. File %s doesn't exist\n", new_path);
+          t_path = *paths->next;
+        }
+        else{
+          printf("Stat succeeded. File %s exists\n", new_path);
+          no_match = false;
+          *commands[i] = strdup(new_path); // copy valid command into commands
+        }
+        attempts++;
+      }   
+    }
+  }
+}
+
+void list_print(const struct node *list) {
+    int i = 0;
+    printf("In list_print\n");
+    while (list != NULL) {
+        printf("List item %d: %s\n", i++, list->value);
+        list = list->next;
+    }
+}
+
+void free_linked_list(struct node* head) {
+    // this function frees all nodes in a linked list, including the value string
+    while(head != NULL) {
+        struct node *tmp = head;
+        head = head->next;
+        free(tmp->value);
+        free(tmp);
+    }
+}
+
 int main(int argc, char **argv) {
+
+    struct node* paths = NULL;
+    create_paths(&paths);
+    list_print(paths);
+
     bool current_mode = true; //use true = sequential, false = parallel
     bool is_running = true;
     int buff_size = 1024;
@@ -199,6 +278,7 @@ int main(int argc, char **argv) {
         }
     }
     free(current_line);
+    free_linked_list(paths);
     return 0;
 }
 
