@@ -61,6 +61,13 @@ char **tokenify(const char *s, char* delim) {
     return tokens; 
 }    
 
+struct node {
+// basic struct for linked list, used to implement paths
+    char value[128];
+    struct node *next;
+};
+
+
 void free_tokens(char **tokens) {
     int i=0;
     while (tokens[i] != NULL){
@@ -95,7 +102,15 @@ void free_jobs(struct job *jobs){
   }
 }
 
-
+void free_linked_list(struct node* head) {
+    // this function frees all nodes in a linked list, including the value string
+    while(head != NULL) {
+        struct node *tmp = head;
+        head = head->next;
+        free(tmp->value);
+        free(tmp);
+    }
+}
 
 void change_mode(bool *mode, char *new_mode){
     if((strcmp(new_mode, "s")==0) || (strcmp(new_mode, "sequential")==0)){
@@ -112,8 +127,74 @@ void change_mode(bool *mode, char *new_mode){
     }
 }
 
+struct node *list_insert(char *path, struct node *head){
+	//using list_insert_head2 as defined in class, passing in word as value
+	struct node *new_node = malloc(sizeof(struct node));
+	path[strlen(path)-1] = '/';
+	strcpy(new_node->value, path);
+	new_node->next = head;
+	return new_node;
+}
 
-bool execute_line(char **tokens, bool *mode){
+/* 
+ * wordbank-related functions. please don't change the
+ * function prototypes for these three functions.
+ * load_words takes the name of the file that should be
+ * opened and words read from, and a pointer to an int
+ * that should be indirectly modified to store the number
+ * of words loaded from the file.  The function should 
+ * return the linked list of words.
+ */
+struct node *load_paths(const char *filename, int *num_paths) {
+	  FILE *config = fopen(filename, "r");
+	  int size = 128; //arbitrary? what should size be?
+	  char *this_line = malloc(size*sizeof(char));
+	  fgets(this_line, size, config);
+	  *num_paths = 0;
+	  struct node *head = malloc(sizeof(struct node));
+	  head = NULL;
+    do{
+		    head = list_insert(this_line, head);
+	    	*num_paths = *num_paths + 1; //dereference to indirectly modify
+    }while (fgets(this_line, size, config) != NULL);
+    free(this_line);
+	  return head;
+}
+
+
+bool check_paths(struct node* paths, char** token) {
+// this function takes a linked list of possible paths, a command string and updates the command list so that all commands are valid
+    char * this_cmd = *token;
+    struct stat statresult;
+    bool match = false;
+    int rv = stat(this_cmd, &statresult);
+    if (rv<0){
+      // stat failed, must try again with paths
+      printf("Stat failed. File %s doesn't exist\n", this_cmd);
+      char* new_path = malloc(sizeof(char)*32);
+      while(!match && paths!=NULL) {
+        //struct node* t_path = paths;
+        new_path = paths->value;
+        strcat(new_path, "/");
+        strcat(new_path,this_cmd);
+        struct stat statresult;
+        rv = stat(new_path, &statresult);
+        if (rv<0) { // still not a match 
+          paths = paths->next;
+        }
+        else{
+          printf("Stat succeeded. File %s exists\n", new_path);
+          match = true;
+          char * temp = *token;
+          *token = new_path;
+          free(temp);
+        }
+      }   
+    }
+    return match;
+}
+
+bool execute_line(char **tokens, bool *mode, struct node *paths){
     //form set of commands instead of tokens, check if any are exit commands and set flag, then execute commands based on which mode we are in    
     int num_commands = 0;
     int n = 0;
@@ -150,84 +231,34 @@ bool execute_line(char **tokens, bool *mode){
                 new_mode = this_cmd[1];
             }
         } else{
-            pid_t  pid = fork();
-            int childrv = 0;
-            if (pid == 0){
-                if(execv(this_cmd[0], this_cmd) <0){
-                    printf("execv failed\n");
-                    printf("Invaid command was: %s\n", this_cmd[0]);
-                    printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
+            if (check_paths(paths, &this_cmd[0])){
+                pid_t  pid = fork();
+                int childrv = 0;
+                if (pid == 0){
+                    if(execv(this_cmd[0], this_cmd) <0){
+                        printf("execv failed\n");
+                        printf("Invaid command was: %s\n", this_cmd[0]);
+                        printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
+                    }
+                } else {
+                    if (*mode){ // sequential mode
+                        pid = wait(&childrv);
+                        printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
+                    }
                 }
-            } else {
-                if (*mode){ // sequential mode
+                if (*mode == false){ // parallel mode
                     pid = wait(&childrv);
-                    printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
                 }
+            }else{
+            printf("Invalid command was: %s\n", this_cmd[0]);
             }
-            if (*mode == false){ // parallel mode
-                pid = wait(&childrv);
-            }
-        }
+        } 
     }
-   
-    
     if (did_mode_change){
         change_mode(mode, new_mode);
     }
     free_cmds(commands, num_commands);
     return is_running;
-}
-
-struct node {
-// basic struct for linked list, used to implement paths
-    char* value;
-    struct node *next;
-};
-
-
-
-
-void create_paths(struct node** head) {
-// given a head to a linked list, this function returns the head of a linked list with the possible paths as nodes
-    int num_paths =7;
-    char* paths[7] = {"/bin","/usr/bin","/usr/sbin","/sbin","/usr/local/bin",".","/usr/games"};
-    
-    for (int i = 0; i <num_paths; i++) {
-        struct node* new_node = (struct node *)malloc(sizeof(struct node));
-        new_node->value = strdup(paths[i]);
-        new_node->next = *head;
-        *head = new_node;
-    }
-}
-
-void check_paths(struct node* paths, char*** commands, int num_commands) {
-// this function takes a linked list of possible paths, a list of commands, and the size of the list and updates the command list so that all commands are valid
-  for (int i = 0; i < num_commands;i++) {
-    struct stat statresult;
-    int rv = stat(*commands[i], &statresult);
-    if (rv<0){
-      // stat failed, must try again with paths
-      printf("Stat failed. File %s doesn't exist\n", *commands[i]);
-      struct node t_path = *paths;
-      bool no_match = true;
-      int attempts = 0;
-      while(no_match && attempts < 7) {
-        char* new_path = strcat(t_path.value, *commands[i]);
-        struct stat statresult;
-        rv = stat(new_path, &statresult);
-        if (rv<0) { // still not a match
-          printf("Stat failed. File %s doesn't exist\n", new_path);
-          t_path = *paths->next;
-        }
-        else{
-          printf("Stat succeeded. File %s exists\n", new_path);
-          no_match = false;
-          *commands[i] = strdup(new_path); // copy valid command into commands
-        }
-        attempts++;
-      }   
-    }
-  }
 }
 
 void list_print(const struct node *list) {
@@ -239,22 +270,10 @@ void list_print(const struct node *list) {
     }
 }
 
-void free_linked_list(struct node* head) {
-    // this function frees all nodes in a linked list, including the value string
-    while(head != NULL) {
-        struct node *tmp = head;
-        head = head->next;
-        free(tmp->value);
-        free(tmp);
-    }
-}
-
 int main(int argc, char **argv) {
-
-    struct node* paths = NULL;
-    create_paths(&paths);
-    list_print(paths);
-
+    char *filename = "/home/csvm/cosc301/cosc301-proj02/shell-config";
+    int num_paths = 0;
+    struct node* paths = load_paths("/home/csvm/cosc301/cosc301-proj02/shell-config", &num_paths); 
     bool current_mode = true; //use true = sequential, false = parallel
     bool is_running = true;
     int buff_size = 1024;
@@ -273,7 +292,7 @@ int main(int argc, char **argv) {
             }
             tokened = tokenify(current_line, ";");
             printf("Test getting tokens, first command is %s \n", tokened[0]);
-            is_running = execute_line(tokened, &current_mode);
+            is_running = execute_line(tokened, &current_mode, paths);
             free_tokens(tokened);
         }
     }
