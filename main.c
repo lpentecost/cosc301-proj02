@@ -74,6 +74,26 @@ void free_cmds(char ***cmd, int num_cmd){
     free(cmd);
 }
 
+// job struct: struct for each job. Stores p_id, command, and whether the process is currently running
+struct job {
+  char process_id;
+  char* command;
+  bool running;
+  struct job* next;
+};
+
+void free_jobs(struct job *jobs){
+// frees all command name in array of job structs along with the entire node
+  while(jobs != NULL) {
+    free(jobs->command);
+    struct job *tmp = jobs;
+    jobs = jobs->next;
+    free(tmp);
+  }
+}
+
+
+
 void change_mode(bool *mode, char *new_mode){
     if((strcmp(new_mode, "s")==0) || (strcmp(new_mode, "sequential")==0)){
         *mode = true;
@@ -89,6 +109,7 @@ void change_mode(bool *mode, char *new_mode){
     }
 }
 
+
 bool execute_line(char **tokens, bool *mode){
     //form set of commands instead of tokens, check if any are exit commands and set flag, then execute commands based on which mode we are in    
     int num_commands = 0;
@@ -101,10 +122,13 @@ bool execute_line(char **tokens, bool *mode){
     if (num_commands == 0){
         return true;
     }
+    
+    
     char ***commands = malloc(num_commands*sizeof(char**));
     for (int i = 0; i<num_commands; i++){
         commands[i] = tokenify(tokens[i], " \t\n");
     }
+
     bool did_mode_change = false;
     char *new_mode = NULL;
     for (int i=0; i<num_commands; i++){
@@ -122,24 +146,28 @@ bool execute_line(char **tokens, bool *mode){
                 did_mode_change = true;
                 new_mode = this_cmd[1];
             }
-        }else{
+        } else{
             pid_t  pid = fork();
             int childrv = 0;
             if (pid == 0){
                 if(execv(this_cmd[0], this_cmd) <0){
                     printf("execv failed\n");
                     printf("Invaid command was: %s\n", this_cmd[0]);
+                    printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
                 }
             } else {
-                if (*mode){
+                if (*mode){ // sequential mode
                     pid = wait(&childrv);
+                    printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
                 }
             }
-            if (*mode == false){
+            if (*mode == false){ // parallel mode
                 pid = wait(&childrv);
             }
         }
     }
+   
+    
     if (did_mode_change){
         change_mode(mode, new_mode);
     }
@@ -165,7 +193,7 @@ int main(int argc, char **argv) {
                 }
             }
             tokened = tokenify(current_line, ";");
-            //printf("Test getting tokens, first command is %s \n", tokened[0]);
+            printf("Test getting tokens, first command is %s \n", tokened[0]);
             is_running = execute_line(tokened, &current_mode);
             free_tokens(tokened);
         }
