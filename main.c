@@ -204,14 +204,18 @@ bool execute_line(char **tokens, bool *mode, struct node *paths){
 
     bool did_mode_change = false;
     char *new_mode = NULL;
+    pid_t pid[num_commands];
+    int childrv = 0;
     for (int i=0; i<num_commands; i++){
         char **this_cmd = commands[i];
         if (this_cmd[0] == NULL){
             printf("Empty Command?\n");
+            pid[i]=-1;
             continue;
         }
         if (strcmp(this_cmd[0], "exit")==0){
             is_running = false;
+            pid[i]=-1;
         } else if (strcmp(this_cmd[0], "mode")==0){
             if ((this_cmd[2] != NULL) || (this_cmd[1] == NULL)){
                 printf("Invalid mode switch\n");
@@ -219,29 +223,33 @@ bool execute_line(char **tokens, bool *mode, struct node *paths){
                 did_mode_change = true;
                 new_mode = this_cmd[1];
             }
+            pid[i]=-1;
         } else{
             if (check_paths(paths, &this_cmd[0])){
-                pid_t  pid = fork();
-                int childrv = 0;
-                if (pid == 0){
+                pid[i] = fork();
+                if (pid[i] == 0){
                     if(execv(this_cmd[0], this_cmd) <0){
                         printf("execv failed\n");
                         printf("Invaid command was: %s\n", this_cmd[0]);
-                        printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
+                        printf("pid: %d\n command: %s\n", pid[i], this_cmd[0]);
                     }
                 } else {
                     if (*mode){ // sequential mode
-                        pid = wait(&childrv);
-                        printf("pid: %d\n command: %s\n", pid, this_cmd[0]);
+                        pid[i] = wait(&childrv);
+                        printf("pid: %d\n command: %s\n", pid[i], this_cmd[0]);
                     }
-                }
-                if (*mode == false){ // parallel mode
-                    pid = wait(&childrv);
                 }
             }else{
                 printf("Invalid command was: %s\n", this_cmd[0]);
+                pid[i] = -1;
             }
         } 
+    }
+    for(int j=0; j<num_commands; j++){
+        //for parallel mode, once all have forked, now wait for them all
+        if(pid[j]>0){
+            pid[j] = wait(&childrv);
+        }
     }
     if (did_mode_change){
         change_mode(mode, new_mode);
@@ -281,7 +289,6 @@ int main(int argc, char **argv) {
                 }
             }
             tokened = tokenify(current_line, ";");
-            printf("Test getting tokens, first command is %s \n", tokened[0]);
             is_running = execute_line(tokened, &current_mode, paths);
             free_tokens(tokened);
         }
