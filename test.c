@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -13,116 +12,77 @@
 #include <poll.h>
 #include <signal.h>
 
-struct node {
-  char* value;
-  struct node* next;
+
+struct job {
+  int process_id;
+  char* command;
+  bool running;
+  struct job* next;
 };
 
-void check_paths(struct node* paths, char** token) {
-// this function takes a linked list of possible paths, a command string and updates the command list so that all commands are valid
-  char * this_cmd = *token;
-    struct stat statresult;
-    int rv = stat(this_cmd, &statresult);
-    if (rv<0){
-      // stat failed, must try again with paths
-      printf("Stat failed. File %s doesn't exist\n", this_cmd);
-      char* new_path = malloc(sizeof(char)*32);
-      bool no_match = true;
-      while(no_match && paths!=NULL) {
-        //struct node* t_path = paths;
-        printf("\n\n");
-        new_path = strcat(paths->value,this_cmd);
-        printf("tokens[i]:  %s\n", this_cmd);
-        printf("t_path.value : %s\n", paths->value);
-        struct stat statresult;
-        rv = stat(new_path, &statresult);
-        if (rv<0) { // still not a match
-          printf("Stat failed. File %s doesn't exist\n", new_path);
-          paths = paths->next;
-        }
-        else{
-          printf("Stat succeeded. File %s exists\n", new_path);
-          no_match = false;
-          //char** temp = &this_cmd;
-          //this_cmd = malloc(sizeof(char)*(strlen(new_path)+1)); 
-          //strcpy(this_cmd,new_path); // copy valid command into commands
-          //free(temp);
-          *token = new_path;
-        }
-      }   
+struct job *list_delete(int pid, struct job *list) {
+  struct job *head = list;
+  //check for first node, then iterate through
+  if (head->process_id == pid){
+	  struct job *tmp = head;
+	  head = head->next;
+	  free(tmp);
+	  return head;
+  }
+  while((list -> next) != NULL){
+	  if (list->next->process_id == pid){
+	    struct job *tmp = list->next;
+	    list->next = list->next->next;
+	    free(tmp);
+	    return head;
+	  } else {list = list->next;}
+  }
+  return head;
+}
+
+
+
+
+/*Helper function for expire job, given a pointer to a linked list of jobs and a node that is to be deleted, this function deletes the node
+*/
+
+/*
+void delete_job(struct job* expired_job, struct job** head) {
+  if (expired_job->process_id == (*head)->process_id) {
+    struct job* temp = *head;
+    *head = (*head)->next;
+    free(temp);
+    return; 
+  }
+  struct job* current = (*head)->next;
+  struct job* previous = *head;
+  while (current != NULL && previous != NULL) {
+    if (expired_job->process_id == current->process_id) {
+      struct job* temp = current;
+      previous->next = current->next;
+      free(temp);
+      return; 
     }
+    current = current->next;
+    previous = previous->next;
+  }
+  return;
 }
+*/
 
 
-void free_linked_list(struct node* head) {
-    // this function frees all nodes in a linked list, including the value string
-    while(head != NULL) {
-        struct node *tmp = head;
-        head = head->next;
-        free(tmp->value);
-        free(tmp);
-    }
-}
 
-void free_tokens(char **tokens) {
-    int i=0;
-    while (tokens[i] != NULL){
-        free(tokens[i]);
-        i++;
-    }
-    free(tokens);
-}
-
-void free_cmds(char ***cmd, int num_cmd){
-    for(int i=0; i<num_cmd; i++){
-        free_tokens(cmd[i]);
-    }    
-    free(cmd);
-}
-
-void create_paths(struct node** head) {
-// given a head to a linked list, this function returns the head of a linked list with the possible paths as nodes
-    int num_paths =7;
-    char* paths[7] = {"/bin/\0","/usr/bin/\0","/usr/sbin/\0","/sbin/\0","/usr/local/bin/\0","./\0","/usr/games/\0"};
-    
-    for (int i = 0; i <num_paths; i++) {
-        struct node* new_node = (struct node *)malloc(sizeof(struct node));
-        new_node->value = strdup(paths[i]);
-        new_node->next = *head;
-        *head = new_node;
-    }
-}
 
 int main() {
-//  struct stat statresult;
-//  char path[] = "/bin";
-//  strcat(path,command);
-//  printf("Path: %s\n", path);
-//  int rv = stat("/bin/ls", &statresult);
-//  if (rv<0){
-//    printf("Stat failed. File doesn't exist\n");
-//  }
-//  else{
-//    printf("Stat succeeded. File exists\n");
-//  }
- 
-  struct node* paths = NULL;
-  create_paths(&paths);
-
-
-  //char** tokens = malloc(num_tokens*sizeof(char*));
-  char *token = "ls";
-  char **tokens = &token;
-  //tokens[1] = "echo";
-  //tokens[2] = "ls";
-
-  check_paths(paths, tokens);
- // free_tokens(tokens);
-  free_linked_list(paths);
+  struct job* jobs = NULL;
+  jobs = job_insert("Happy", 12345, jobs);
+  jobs = job_insert("Marry", 32145, jobs);
+  jobs = job_insert("Bob", 12246, jobs);
+  job_print(jobs);
+  expire_job(12345, &jobs);
+  printf("After deletions\n");
+  job_print(jobs);
   return 0;
 }
-
-
-
 
 
