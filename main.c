@@ -20,7 +20,9 @@ Lillie worked mostly on these things:
 modifying tokenify
 setting up execution of commands for both modes
 setting up change_mode
-Additional Stage 1 features (commenting, corner cases, etc.)
+corner cases, testing for stage 1
+fixing Parameter types of pause/resume commands
+final debugging for memory leaks and pointer inconsistencies  on stage 2
 
 Sam worked mostly on these things:
 
@@ -29,9 +31,7 @@ background processes
 jobs linked list implementation, function etc
 updating jobs linked list
 pause/resume function
-Additional Stage 2 features
 
-But you rarely see us apart so it's pretty damn collaborative (two Cat Emojis)
 */
 
 char **tokenify(const char *s, char* delim) {
@@ -162,20 +162,19 @@ struct job *delete_job(int pid, struct job *head) {
         struct job *dead = head;
         head = head->next;
         free(dead);
-        free(dead->command);
         return head;
     }
     struct job *tmp = head;
     while (tmp->next != NULL) {
         if (tmp->next->process_id == pid) {
             struct job *dead = tmp->next;
-            tmp->next = dead->next;
+            tmp->next = tmp->next->next;
             free(dead);
-            free(dead->command);
             return head;
         }
         tmp = tmp->next;
     }
+    free(tmp);
     return head;
 }
 
@@ -237,7 +236,6 @@ void free_jobs(struct job *jobs){
     struct job *tmp = jobs;
     jobs = jobs->next;
     free(tmp);
-    free(tmp->command);
   }
 }
 
@@ -247,7 +245,7 @@ void free_linked_list(struct node* head) {
         struct node *tmp = head;
         head = head->next;
         free(tmp->value);
-        //free(tmp);
+        //free(tmp); //careful how we are using this, haven't we freed this elsewhere?
     }
 }
 
@@ -272,16 +270,14 @@ struct node *load_paths(const char *filename, int *num_paths) {
 	  int size = 132;
 	  char *this_line = malloc(size*sizeof(char));
 	  fgets(this_line, size, config);
-    //printf("Path from file: %s\n", this_line);
 	  *num_paths = 0;
-	  //struct node *head = malloc(sizeof(struct node));
 	  struct node *head = NULL;
           do{
 		head = list_insert(this_line, head);
 	    	*num_paths = *num_paths + 1; //dereference to indirectly modify
           }while (fgets(this_line, size, config) != NULL);
           free(this_line);
-    fclose(config);
+          fclose(config);
 	  return head;
 }
 
@@ -325,7 +321,6 @@ bool execute_line(char **tokens, bool *mode, struct node *paths, struct job** jo
   int n = 0;
   bool is_running = true;
   int num_forks = 0;
-  //int pid;
   while (tokens[n] != NULL){
     num_commands++;
     n++;
@@ -370,9 +365,8 @@ bool execute_line(char **tokens, bool *mode, struct node *paths, struct job** jo
     } 
     else if (strcmp(this_cmd[0], "pause")==0) {
       pid_t pid_temp = atoi(this_cmd[1]);
-      printf("pid_temp is : %d\n", pid_temp);
-      struct job* temp = job_find(pid_temp, *jobs);
-      //printf("Temp Command : %s\n",temp->command); 
+      //printf("pid_temp is : %d\n", pid_temp);
+      struct job* temp = job_find(pid_temp, *jobs); 
       if (temp != NULL) {
         kill(temp->process_id,SIGSTOP);
         temp->running = false;
@@ -402,7 +396,6 @@ bool execute_line(char **tokens, bool *mode, struct node *paths, struct job** jo
         } 
         else {
           *jobs = job_insert(this_cmd[0], pid, *jobs);  // this_cmd[0]
-//          job_print(jobs);
           if (*mode){ // sequential mode
             pid = wait(&childrv);
             printf("Process: %d\t completed\n",  pid);
@@ -434,8 +427,7 @@ void list_print(const struct node *list) {
 }
 
 int main(int argc, char **argv) {
-  char *filename = argv[1];
-  //char *filename = "/home/csvm/cosc301/cosc301-proj02/shell-config";
+  char *filename = argv[1]; //takes full path to config file as command line argument
   int num_paths = 0;
   struct node* paths = NULL;
   paths = load_paths(filename, &num_paths);
@@ -455,7 +447,6 @@ int main(int argc, char **argv) {
     poll(&pfd[0], 1, 1000);
     printf(">>");
     fflush(stdout);
-    //jobs = clean_up_jobs(jobs);
     char *result = fgets(current_line, sizeof(char)*buff_size, stdin);
     if (result != NULL && (strcmp(current_line, "\n")!=0)){
       for(int i = 0; i <strlen(current_line); i++){
@@ -476,7 +467,6 @@ int main(int argc, char **argv) {
       printf("Process: %d completed\n",  pid);
       jobs = delete_job(pid, jobs); 
     } 
-    jobs = clean_up_jobs(jobs); 
   }
   free(current_line);
   free_linked_list(paths);
