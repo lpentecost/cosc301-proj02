@@ -375,6 +375,7 @@ bool execute_line(char **tokens, bool *mode, struct node *paths, struct job** jo
       //printf("Temp Command : %s\n",temp->command); 
       if (temp != NULL) {
         kill(temp->process_id,SIGSTOP);
+        temp->running = false;
       }else {
         printf("This is not a current process.\n");
       }
@@ -383,6 +384,7 @@ bool execute_line(char **tokens, bool *mode, struct node *paths, struct job** jo
       struct job* temp = job_find(pid_temp, *jobs);
       if (temp != NULL) {
         kill(temp->process_id, SIGCONT);
+        temp->running = true;
       } else {
         printf("This is not a current process.\n");
       }
